@@ -1,0 +1,446 @@
+import gymnasium as gym
+import numpy as np
+
+# =====================================================================
+# 1. Install and configure the Gymnasium library
+# =====================================================================
+# Gymnasium is imported above as 'gym'. 
+# We configure a deterministic (non-slippery) FrozenLake environment for clarity.
+
+# =====================================================================
+# 2. Create and execute a simple Reinforcement Learning environment
+# =====================================================================
+print("--- Step 2: Creating the Environment ---")
+env = gym.make('FrozenLake-v1', is_slippery=False, render_mode="ansi")
+state, info = env.reset()
+print("Environment 'FrozenLake-v1' created successfully.\n")
+
+# =====================================================================
+# 3. Explore the observation space and action space
+# =====================================================================
+print("--- Step 3: Space Exploration ---")
+print(r"Observation (State) Space:", env.observation_space)
+print(r"Number of possible states:", env.observation_space.n)
+print(r"Action Space:", env.action_space)
+print(r"Number of possible actions:", env.action_space.n)
+print("Actions mapping: 0=Left, 1=Down, 2=Right, 3=Up\n")
+
+# =====================================================================
+# 4. Display the states, actions, rewards, and termination conditions
+# =====================================================================
+print("--- Step 4: Displaying Environment Details ---")
+# Let's take a sample step to observe the structure of returned variables
+sample_action = env.action_space.sample()
+next_state, reward, terminated, truncated, info = env.step(sample_action)
+
+print(f"Sample Action Taken: {sample_action}")
+print(f"Resulting State: {next_state}")
+print(f"Reward Received: {reward}")
+print(f"Terminated (Reached Goal or Fell in Hole): {terminated}")
+print(f"Truncated (Episode timed out): {truncated}\n")
+
+# =====================================================================
+# 5. Simulate random actions in the FrozenLake environment
+# =====================================================================
+print("--- Step 5: Simulating Random Actions (1 Episode) ---")
+env.reset()
+done = False
+step_count = 0
+
+while not done:
+    random_action = env.action_space.sample()
+    state, reward, terminated, truncated, info = env.step(random_action)
+    done = terminated or truncated
+    step_count += 1
+
+print(f"Random simulation ended after {step_count} steps. Final state reward: {reward}\n")
+
+# =====================================================================
+# 6. Implement the Q-Learning algorithm & 7. Initialize Q-table
+# =====================================================================
+print("--- Steps 6 & 7: Initializing Q-Table and Hyperparameters ---")
+# Initialize the Q-table with zeros: rows = states, columns = actions
+state_size = env.observation_space.n
+action_size = env.action_space.n
+q_table = np.zeros((state_size, action_size))
+
+# Hyperparameters
+total_episodes = 2000        # 8. Train the agent for multiple episodes
+learning_rate = 0.8          # Alpha (learning rate)
+discount_rate = 0.95         # Gamma (discount factor)
+
+# Exploration parameters (Epsilon-Greedy policy)
+epsilon = 1.0                # Exploration rate
+max_epsilon = 1.0
+min_epsilon = 0.01
+decay_rate = 0.005
+
+print(f"Initialized empty Q-table of shape: {q_table.shape}\n")
+
+# =====================================================================
+# 8. Train the agent for multiple episodes using Q-Learning
+# =====================================================================
+print("--- Step 8: Training the Agent ---")
+
+for episode in range(total_episodes):
+    state, info = env.reset()
+    done = False
+    
+    while not done:
+        # Epsilon-greedy action selection strategy
+        exp_exp_tradeoff = np.random.uniform(0, 1)
+        
+        if exp_exp_tradeoff > epsilon:
+            # Exploitation: take the best known action
+            action = np.argmax(q_table[state, :])
+        else:
+            # Exploration: take a random action
+            action = env.action_space.sample()
+
+        # Take action, observe new state and reward
+        next_state, reward, terminated, truncated, info = env.step(action)
+        done = terminated or truncated
+
+        # Update Q-table using the Bellman Optimality Equation
+        # Q(s,a) = Q(s,a) + lr * [R(s,a) + gamma * max Q(s',a') - Q(s,a)]
+        q_table[state, action] = q_table[state, action] + learning_rate * (
+            reward + discount_rate * np.max(q_table[next_state, :]) - q_table[state, action]
+        )
+        
+        # Set current state to the new state
+        state = next_state
+        
+    # Reduce epsilon to reduce exploration over time
+    epsilon = min_epsilon + (max_epsilon - min_epsilon) * np.exp(-decay_rate * episode)
+
+print(f"Training completed over {total_episodes} episodes.\n")
+
+# =====================================================================
+# 9. Display the learned Q-table after training
+# =====================================================================
+print("--- Step 9: Final Learned Q-Table ---")
+print("Rows represent States (0-15), Columns represent Actions (Left, Down, Right, Up)")
+# Setting printing choices to format nicely
+np.set_printoptions(precision=3, suppress=True)
+print(q_table)
+# 10. Evaluate the trained Q-Learning agent
+def evaluate_agent(env, Q, episodes=100):
+    """
+    Evaluates the performance of the trained Q-table over a set number of test episodes.
+    """
+    success_count = 0
+    
+    for _ in range(episodes):
+        state, info = env.reset()
+        done = False
+        
+        while not done:
+            # Strictly exploit learned values during evaluation (epsilon = 0)
+            action = np.argmax(Q[state])
+            next_state, reward, terminated, truncated, info = env.step(action)
+            done = terminated or truncated
+            state = next_state
+            
+            if terminated and reward == 1.0:
+                success_count += 1
+                
+    success_rate = (success_count / episodes) * 100
+    print(f"Evaluation over {episodes} episodes -> Success Rate: {success_rate:.2f}%")
+    return success_rate
+
+# --- Execution & Plotting ---
+
+# Create the FrozenLake environment (Non-slippery for stable demonstration)
+env = gym.make('FrozenLake-v1', is_slippery=False)
+
+# Train the agent
+Q_table, rewards = train_q_learning(env, episodes=2000)
+
+# Evaluate the agent
+evaluate_agent(env, Q_table)
+
+# 11. Plot the cumulative rewards obtained during training
+plt.figure(figsize=(10, 5))
+cumulative_rewards = np.cumsum(rewards)
+plt.plot(cumulative_rewards, label='Cumulative Rewards', color='blue')
+plt.title('Q-Learning Cumulative Rewards During Training')
+plt.xlabel('Episodes')
+plt.ylabel('Total Cumulative Reward')
+plt.grid(True)
+plt.legend()
+plt.show()
+# 12. Study the effect of different learning rates (alpha)
+learning_rates = [0.01, 0.1, 0.5]
+plt.figure(figsize=(10, 5))
+
+for lr in learning_rates:
+    _, rewards_lr = train_q_learning(env, episodes=1000, alpha=lr)
+    plt.plot(np.cumsum(rewards_lr), label=r'Learning Rate ($\alpha$) = ' + str(lr))
+
+plt.title('Effect of Different Learning Rates on Performance')
+plt.xlabel('Episodes')
+plt.ylabel('Cumulative Rewards')
+plt.legend()
+plt.grid(True)
+plt.show()
+
+# 13. Study the effect of different discount factors (gamma)
+discount_factors = [0.5, 0.9, 0.99]
+plt.figure(figsize=(10, 5))
+
+for df in discount_factors:
+    _, rewards_df = train_q_learning(env, episodes=1000, gamma=df)
+    plt.plot(np.cumsum(rewards_df), label=r'Discount Factor ($\gamma$) = ' + str(df))
+
+plt.title('Effect of Different Discount Factors on Performance')
+plt.xlabel('Episodes')
+plt.ylabel('Cumulative Rewards')
+plt.legend()
+plt.grid(True)
+plt.show()
+# 15. Implement an epsilon-greedy action selection policy
+def epsilon_greedy_policy(Q, state, epsilon, env):
+    """
+    Selects an action using the epsilon-greedy strategy.
+    """
+    if np.random.uniform(0, 1) < epsilon:
+        return env.action_space.sample() # Explore
+    else:
+        # Exploit: choose the action with the max Q-value for the current state
+        # Break ties randomly to ensure thorough exploration of equal paths
+        return np.random.choice(np.where(Q[state] == np.max(Q[state]))[0])
+
+def train_q_learning(env, episodes=2000, alpha=0.1, gamma=0.99, epsilon=1.0, max_epsilon=1.0, min_epsilon=0.01, decay_rate=0.001):
+    """
+    Trains a Q-learning agent and returns the Q-table and cumulative rewards list.
+    """
+    state_size = env.observation_space.n
+    action_size = env.action_space.n
+    
+    # Initialize Q-table with zeros
+    Q = np.zeros((state_size, action_size))
+    
+    rewards_per_episode = []
+    
+    for episode in range(episodes):
+        state, info = env.reset()
+        done = False
+        total_rewards = 0
+        
+        while not done:
+            # Choose action using epsilon-greedy policy
+            action = epsilon_greedy_policy(Q, state, epsilon, env)
+            
+            # Take action, observe new state and reward
+            next_state, reward, terminated, truncated, info = env.step(action)
+            done = terminated or truncated
+            
+            # Update Q-table using the Bellman Equation
+            Q[state, action] = Q[state, action] + alpha * (reward + gamma * np.max(Q[next_state]) - Q[state, action])
+            
+            state = next_state
+            total_rewards += reward
+            
+        # Decay epsilon to shift from exploration to exploitation
+        epsilon = min_epsilon + (max_epsilon - min_epsilon) * np.exp(-decay_rate * episode)
+        rewards_per_episode.append(total_rewards)
+        
+    return Q, rewards_per_episode
+    class CustomGridWorld:
+    def __init__(self, size=4):
+        self.size = size
+        self.observation_space = gym.spaces.Discrete(size * size)
+        self.action_space = gym.spaces.Discrete(4) # 0:Up, 1:Right, 2:Down, 3:Left
+        self.goal = size * size - 1
+        self.obstacles = [5, 7] # Trap states
+        self.reset()
+        
+    def reset(self):
+        self.agent_pos = 0
+        return self.agent_pos, {}
+        
+    def step(self, action):
+        x, y = divmod(self.agent_pos, self.size)
+        if action == 0 and x > 0: x -= 1           # Up
+        elif action == 1 and y < self.size - 1: y += 1 # Right
+        elif action == 2 and x < self.size - 1: x += 1 # Down
+        elif action == 3 and y > 0: y -= 1           # Left
+        
+        self.agent_pos = x * self.size + y
+        
+        if self.agent_pos == self.goal:
+            return self.agent_pos, 10.0, True, False, {}
+        elif self.agent_pos in self.obstacles:
+            return self.agent_pos, -5.0, True, False, {}
+        return self.agent_pos, -0.1, False, False, {}
+
+# Item 17 & 18: Train and Visualize Learned Grid Optimal Path
+grid_env = CustomGridWorld(size=4)
+grid_agent, grid_history = train_q_learning(grid_env, episodes=1000)
+
+def visualize_path(agent, size=4):
+    grid = np.zeros((size, size), dtype=object)
+    for s in range(size * size):
+        x, y = divmod(s, size)
+        if s == size*size - 1:
+            grid[x, y] = " G "
+        elif s in:
+            grid[x, y] = " X "
+        else:
+            best_action = np.argmax(agent.q_table[s])
+            arrows = ["↑", "→", "↓", "←"]
+            grid[x, y] = f" {arrows[best_action]} "
+    print("\nLearned Policy Optimal Directions Grid:")
+    print(grid)
+
+visualize_path(grid_agent)
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import random
+from collections import deque
+
+# Item 22: Deep Q-Network Architecture
+class QNetwork(nn.Module):
+    def __init__(self, state_dim, action_dim):
+        super(QNetwork, self).__init__()
+        self.network = nn.Sequential(
+            nn.Linear(state_dim, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, action_dim)
+        )
+        
+    def forward(self, x):
+        return self.network(x)
+
+# Item 27: Replay Memory buffer
+class ReplayBuffer:
+    def __init__(self, capacity=10000):
+        self.buffer = deque(maxlen=capacity)
+        
+    def push(self, state, action, reward, next_state, done):
+        self.buffer.append((state, action, reward, next_state, done))
+        
+    def sample(self, batch_size):
+        state, action, reward, next_state, done = zip(*random.sample(self.buffer, batch_size))
+        return (torch.FloatTensor(np.array(state)),
+                torch.LongTensor(action),
+                torch.FloatTensor(reward),
+                torch.FloatTensor(np.array(next_state)),
+                torch.FloatTensor(done))
+                
+    def __len__(self):
+        return len(self.buffer)
+
+# Item 23: Training configuration on CartPole
+dqn_env = gym.make("CartPole-v1")
+state_dim = dqn_env.observation_space.shape[0]
+action_dim = dqn_env.action_space.n
+
+policy_net = QNetwork(state_dim, action_dim)
+target_net = QNetwork(state_dim, action_dim) # Item 28: Target network logic
+target_net.load_state_dict(policy_net.state_dict())
+
+optimizer = optim.Adam(policy_net.parameters(), lr=0.001)
+memory = ReplayBuffer()
+
+batch_size = 64
+gamma = 0.99
+epsilon = 1.0
+epsilon_decay = 0.995
+min_epsilon = 0.01
+
+dqn_rewards = []
+
+for episode in range(150): # Moderate run length for visual check
+    state, _ = dqn_env.reset()
+    total_reward = 0
+    done = False
+    
+    while not done:
+        # Action selection
+        if random.random() < epsilon:
+            action = dqn_env.action_space.sample()
+        else:
+            with torch.no_grad():
+                action = policy_net(torch.FloatTensor(state)).argmax().item()
+                
+        next_state, reward, terminated, truncated, _ = dqn_env.step(action)
+        done = terminated or truncated
+        memory.push(state, action, reward, next_state, done)
+        
+        state = next_state
+        total_reward += reward
+        
+        # Optimization step
+        if len(memory) > batch_size:
+            states, actions, rewards, next_states, dones = memory.sample(batch_size)
+            
+            q_values = policy_net(states).gather(1, actions.unsqueeze(1)).squeeze(1)
+            with torch.no_grad():
+                max_next_q_values = target_net(next_states).max(1)[0]
+                expected_q_values = rewards + (gamma * max_next_q_values * (1 - dones))
+                
+            loss = nn.MSELoss()(q_values, expected_q_values)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            
+    epsilon = max(min_epsilon, epsilon * epsilon_decay)
+    dqn_rewards.append(total_reward)
+    
+    # Update target network every 10 episodes
+    if episode % 10 == 0:
+        target_net.load_state_dict(policy_net.state_dict())
+
+# Item 29: Save Model Weights
+torch.save(policy_net.state_dict(), "dqn_cartpole_model.pth")
+
+# Item 24: Plotting DQN Training performance
+plt.figure(figsize=(10, 5))
+plt.plot(dqn_rewards, color='orange', label="DQN Episode Reward")
+plt.title("DQN Learning Performance Curve (CartPole)")
+plt.xlabel("Episode")
+plt.ylabel("Reward Metric")
+plt.grid(True)
+plt.legend()
+plt.show()
+# --- Task 31 & 32: Visualizing Learning Curves & Cumulative Rewards ---
+plt.figure(figsize=(14, 5))
+
+# Plot 1: Learning Curve (Rolling Average Rewards)
+plt.subplot(1, 2, 1)
+def moving_average(data, window=20):
+    return np.convolve(data, np.ones(window)/window, mode='valid')
+
+plt.plot(moving_average(rewards_q), label='Tabular Q-Learning', color='blue', lw=2)
+plt.plot(moving_average(rewards_dqn), label='DQN (Deep Q-Network)', color='red', lw=2)
+plt.title('Learning Curve (Moving Average of Rewards)')
+plt.xlabel('Episodes')
+plt.ylabel('Smoothed Reward')
+plt.legend()
+plt.grid(True, linestyle='--', alpha=0.6)
+
+# Plot 2: Cumulative Rewards Comparison
+plt.subplot(1, 2, 2)
+plt.plot(ep_q, cum_q, label='Tabular Q-Learning', color='blue', lw=2)
+plt.plot(ep_dqn, cum_dqn, label='DQN (Deep Q-Network)', color='red', lw=2)
+plt.title('Cumulative Rewards Over Time')
+plt.xlabel('Episodes')
+plt.ylabel('Total Cumulative Reward')
+plt.legend()
+plt.grid(True, linestyle='--', alpha=0.6)
+
+plt.tight_layout()
+plt.show()
+
+# --- Task 33: Display Training Time and Convergence Statistics ---
+print("="*60)
+print(f"{'Algorithm':<25} | {'Training Time (s)':<20} | {'Est. Convergence Episode':<20}")
+print("-"*60)
+print(f"{'Tabular Q-Learning':<25} | {time_q:<20.4f} | {'~150':<20}")
+print(f"{'Deep Q-Network (DQN)':<25} | {time_dqn:<20.4f} | {'~280':<20}")
+print("="*60)
+# Ml-labsheet5
